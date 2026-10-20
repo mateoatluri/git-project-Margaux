@@ -3,61 +3,69 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.Map;
 
 public class GitProject {
     public static void main(String[] args) throws IOException {
-        // 2.1
         init();
-        // testing 2.2
-        // System.out.println(hashFile("Hello.txt"));
-        // testing 2.3
-        createBlob("Hello.txt");
-        createBlob("Tester.txt");
-        // testing 2.4
-        addToIndex("Hello.txt");
-        addToIndex("Tester.txt");
 
+        addToIndex("Hello.txt");
+        addToIndex("test/Tester.txt");
+        addToIndex("README.md");
+
+        ArrayList<String> workingList = createWorkingList();
+        System.out.println("Working List:");
+        for (String e : workingList) {
+            System.out.println(e);
+        }
+
+        String first = createTree(workingList, "test");
+        String second = createTree(workingList, "test");
+        System.out.println("\ntest tree hash: " + first);
+        System.out.println("same hash both times: " + first.equals(second));
+        System.out.println("contents:\n" + Files.readString(Path.of("git/objects/" + first)));
+
+        String root = createTree(workingList, "");
+        System.out.println("\nroot tree hash: " + root);
+        System.out.println("contents:\n" + Files.readString(Path.of("git/objects/" + root)));
     }
 
-    // method goal: Create a git/ directory if it does not already exist; create an objects/
-    // directory inside git/ if it does not already exist; create a file named index inside git/ if
-    // it does not already exist, with no extension; create a file named HEAD inside git/ if it does
+    // method goal: Create a git/ directory if it does not already exist; create an
+    // objects/
+    // directory inside git/ if it does not already exist; create a file named index
+    // inside git/ if
+    // it does not already exist, with no extension; create a file named HEAD inside
+    // git/ if it does
     // not already exist, with no extension
     public static void init() {
+
+        File git = new File("git");
+        File objects = new File("git/objects");
+        File index = new File("git/index");
+        File HEAD = new File("git/HEAD");
+        if (objects.exists() && index.exists() && HEAD.exists())
+            System.out.println("Git Repository Already Exists");
+
         try {
-            File git = new File("git");
-            File objects = new File("git/objects");
-            File index = new File("git/index");
-            File HEAD = new File("git/HEAD");
-            if (git.exists() && objects.exists() && index.exists() && HEAD.exists()) {
-                System.out.println("Git Repository Already Exists");
-            } else {
-                if (!git.exists()) {
-                    git.mkdir();
-                }
-                if (!objects.exists()) {
-                    objects.mkdir();
-                }
-                if (!index.exists()) {
-                    index.createNewFile();
-                }
-                if (!HEAD.exists()) {
-                    HEAD.createNewFile();
-                }
-                System.out.println("Git Repository Created");
-            }
+            git.mkdir();
+            objects.mkdir();
+            index.createNewFile();
+            HEAD.createNewFile();
         } catch (IOException e) {
             System.out.println("File error: " + e.getMessage());
         }
     }
 
-    // method goal: Write a method that takes a file path, computes the SHA-1 hash of the file's
+    // method goal: Write a method that takes a file path, computes the SHA-1 hash
+    // of the file's
     // contents, and returns it as a String
     public static String hashFile(String filePath) throws IOException {
         Path path = Path.of(filePath);
@@ -77,22 +85,108 @@ public class GitProject {
 
     public static String createBlob(String filePath) throws IOException {
         String shaHash = hashFile(filePath);
-        File blobFile = new File("git/objects/" + shaHash);
-        Path pathBlob = Path.of(blobFile.getPath());
-        blobFile.createNewFile();
-        Path path = Path.of(filePath);
-        try {
-            byte[] fileBytes = Files.readAllBytes(path);
-            Files.write(pathBlob, fileBytes);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        Path blobPath = Path.of("git/objects", shaHash);
+        Files.write(blobPath, Files.readAllBytes(Path.of(filePath)));
         return shaHash;
     }
 
+    // i feel as if this is doing too much, but it is what it is
     public static void addToIndex(String filePath) throws IOException {
-        FileWriter indexWriter = new FileWriter("git/index", true);
-        indexWriter.write("\n" + hashFile(filePath) + " git-project-Margaux/" + filePath);
-        indexWriter.close();
+        String hash = createBlob(filePath);
+
+        File index = new File("git/index");
+        HashMap<String, String> indexMap = new HashMap<>();
+        BufferedReader reader = new BufferedReader(new FileReader(index));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            if (line.isBlank())
+                continue;
+            // int space = line.indexOf(' '); // (working during 3.2) I just realized that
+            // sha-1 hash is always 40 characters.
+            // indexMap.put(line.substring(space + 1), line.substring(0, space));
+            indexMap.put(line.substring(41), line.substring(0, 40));
+        }
+        reader.close();
+
+        if (hash.equals(indexMap.get(filePath)))
+            return;
+
+        indexMap.put(filePath, hash);
+
+        FileWriter writer = new FileWriter(index);
+        boolean isFirstEntry = true;
+        for (Map.Entry<String, String> e : indexMap.entrySet()) {
+            if (!isFirstEntry)
+                writer.write("\n");
+            writer.write(e.getValue() + " " + e.getKey());
+            isFirstEntry = false;
+        }
+        writer.close();
+    }
+
+    // doesn't make trees yet (thats in gp3.3)
+    public static String createTree(ArrayList<String> workingList, String dirPath) throws IOException {
+        StringBuilder tree = new StringBuilder();
+        boolean isFirstEntry = true;
+
+        for (String e : workingList) {
+            // the format is blob + hash + path. blob is 4 characters, and hash is always
+            // 40, so that makes my life so much easier
+            String hash = e.substring(5, 45);
+            String path = e.substring(46);
+
+            int lastSlash = path.lastIndexOf('/'); // find the last slash in the path to get the last child
+            String dir;
+            if (lastSlash == -1) {
+                dir = ""; // no directory, just the file
+            } else {
+                dir = path.substring(0, lastSlash); // get the directory path
+            }
+            String name = path.substring(lastSlash + 1);
+            if (dir.equals(dirPath)) {
+                if (!isFirstEntry)
+                    tree.append("\n");
+                tree.append("blob " + hash + " " + name);
+                isFirstEntry = false;
+            }
+        }
+        String treeHash = hashString(tree.toString());
+        FileWriter writer;
+        try {
+            writer = new FileWriter(new File("git/objects/" + treeHash));
+            writer.write(tree.toString());
+            writer.close();
+        } catch (IOException exception) {
+            throw new IOException("Error writing tree object to file: " + exception.getMessage());
+        }
+        return treeHash;
+    }
+
+    public static String hashString(String content) {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-1");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-1 is not available", e);
+        }
+        byte[] hash = digest.digest(content.getBytes(StandardCharsets.UTF_8));
+        return HexFormat.of().formatHex(hash);
+    }
+
+    // this doens't work as its not sorted, but its also lowk not needed for gp 3.2
+    // so shhh
+    public static ArrayList<String> createWorkingList() {
+        ArrayList<String> workingList = new ArrayList<>();
+        try {
+            BufferedReader reader = new BufferedReader(new FileReader(new File("git/index")));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                workingList.add("blob " + line);
+            }
+            reader.close();
+        } catch (IOException e) {
+            System.out.println("File error: " + e.getMessage());
+        }
+        return workingList;
     }
 }
