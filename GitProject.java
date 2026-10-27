@@ -13,13 +13,19 @@ import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Map;
 
+
+
 public class GitProject {
     public static void main(String[] args) throws IOException {
         init();
 
         addToIndex("Hello.txt");
+        addToIndex("Tester.txt");
         addToIndex("test/Tester.txt");
         addToIndex("README.md");
+
+        addToIndex("file.txt");
+        addToIndex("test/file.txt");
 
         ArrayList<String> workingList = createWorkingList();
         System.out.println("Working List:");
@@ -104,6 +110,7 @@ public class GitProject {
             // int space = line.indexOf(' '); // (working during 3.2) I just realized that
             // sha-1 hash is always 40 characters.
             // indexMap.put(line.substring(space + 1), line.substring(0, space));
+            // path | hash
             indexMap.put(line.substring(41), line.substring(0, 40));
         }
         reader.close();
@@ -126,6 +133,7 @@ public class GitProject {
 
     public static String createTree(ArrayList<String> workingList, String dirPath) throws IOException {
         ArrayList<String> lines = new ArrayList<>();
+        // ^^ lines is comprised of the children
 
         for (String e : workingList) {
             // the format is blob + hash + path. blob is 4 characters, and hash is always
@@ -163,8 +171,10 @@ public class GitProject {
         }
 
         // this is the base case. if there are no directories left, we can just create a tree and return its hash; this is the root
-        if (theBiggestTheLargest.isEmpty())
+        if (theBiggestTheLargest.isEmpty()) {
             return createTree(workingList, "");
+        }
+            
 
         String treeHash = createTree(workingList, theBiggestTheLargest);
 
@@ -173,6 +183,7 @@ public class GitProject {
         for (String e : workingList) {
             if (!parentDir(e.substring(46)).equals(theBiggestTheLargest))
                 newWorkingList.add(e);
+            // seems like this effectively collapses all of this directories children out of the new working list
         }
         newWorkingList.add("tree " + treeHash + " " + theBiggestTheLargest);
         return buildTree(newWorkingList); // we don't gotta re-sort because create tree will
