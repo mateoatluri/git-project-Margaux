@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.Date;
+import java.lang.StringBuilder;
 
 
 
@@ -42,6 +44,17 @@ public class GitProject {
         String root = buildTree(workingList);
         System.out.println("\nroot tree hash: " + root);
         System.out.println("contents:\n" + Files.readString(Path.of("git/objects/" + root)));
+
+        // testing commit
+        System.out.println("\n" + "------------TESTING COMMIT-----------" + "\n");
+        String testCommit = commit("mateo", "please let this work");
+        System.out.println("First Commit Hash: " + testCommit);
+        System.out.println("First Commit contents:\n" + Files.readString(Path.of("git/objects/" + testCommit)));
+
+        String testCommitTwo = commit("mateo", "please let this work again");
+        System.out.println("Second Commit Hash: " + testCommitTwo);
+        System.out.println("Second Commit contents:\n" + Files.readString(Path.of("git/objects/" + testCommitTwo)));
+
     }
 
     // method goal: Create a git/ directory if it does not already exist; create an
@@ -221,4 +234,57 @@ public class GitProject {
         workingList.sort((a, b) -> a.substring(46).compareTo(b.substring(46))); // https://www.w3schools.com/java/ref_arraylist_sort.asp
         return workingList;
     }
+
+    public static String commit(String author, String message) throws IOException {
+            
+        
+            ArrayList<String> workingList = createWorkingList();
+            String rootHash = buildTree(workingList);
+
+            StringBuilder commitContents = new StringBuilder();
+
+            //look into HEAD to find previous commit hash
+            BufferedReader reader = new BufferedReader(new FileReader(new File("git/HEAD")));
+            StringBuilder previousCommitHashBuilder = new StringBuilder("");
+            String line;
+            while ((line = reader.readLine()) != null) {
+                previousCommitHashBuilder.append(line);
+            }
+            reader.close();
+            String previousCommitHash = previousCommitHashBuilder.toString();
+
+            commitContents.append("tree: " + rootHash + "\n");
+
+            if (!previousCommitHash.equals("")) {
+                commitContents.append("parent: " + previousCommitHash + "\n");
+            }
+
+            commitContents.append("author: " + author + "\n");
+
+            Date currentDate = new Date();
+            commitContents.append("date: " + currentDate + "\n");
+
+            commitContents.append("message: " + message);
+
+            String shaHash = hashString(commitContents.toString());
+
+            File commitFile = new File("git/objects/" + shaHash);
+            FileWriter commitWriter = new FileWriter(commitFile);
+            commitWriter.write(commitContents.toString());
+            commitWriter.close();
+
+            File HEAD = new File("git/HEAD");
+            FileWriter headWriter = new FileWriter(HEAD);
+            headWriter.write(shaHash);
+            headWriter.close();
+
+
+            return shaHash;
+
+        }
+
+
 }
+
+
+    
